@@ -314,6 +314,10 @@ impl QueryBuilder for SqlQueryBuilder {
     {
         let iterable: HashMap<String, String> = iterate_struct(&columns);
 
+        if iterable.len() == 0 {
+            return self;
+        }
+
         let mut columns = String::new();
 
         for (column, value) in &iterable {
@@ -469,6 +473,28 @@ mod tests {
             .unwrap();
 
         assert_eq!(query, "UPDATE users SET name = 'John' WHERE id = '1';");
+    }
+
+    #[test]
+    fn should_use_multiple_where_and() {
+        #[derive(Serialize)]
+        struct User {
+            name: Option<String>,
+            id: Option<String>,
+        }
+
+        let user = User {
+            name: Some("John".to_string()),
+            id: None,
+        };
+
+        let query = SqlQueryBuilder::new()
+            .SELECT(&["*"])
+            .WHERE_AND(&user)
+            .build()
+            .unwrap();
+
+        assert_eq!(query, "SELECT * WHERE name = 'John';");
     }
 }
 
