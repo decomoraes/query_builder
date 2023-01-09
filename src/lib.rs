@@ -46,6 +46,9 @@ pub trait QueryBuilder {
     fn UPDATE<T>(&mut self, columns: &T) -> &mut Self
     where
         T: Serialize;
+    fn WHERE_AND<T>(&mut self, columns: &T) -> &mut Self
+    where
+        T: Serialize;
     fn WHERE_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
     fn WHERE(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
     fn to_string(&self) -> io::Result<String>;
@@ -301,6 +304,31 @@ impl QueryBuilder for SqlQueryBuilder {
         self.query.push_str(&self.table);
         self.query.push_str(" SET ");
         self.query.push_str(&sets[..sets.len() - 2]);
+        self.query.push_str(" ");
+        self
+    }
+
+    fn WHERE_AND<T>(&mut self, columns: &T) -> &mut Self
+    where
+        T: Serialize,
+    {
+        let iterable: HashMap<String, String> = iterate_struct(&columns);
+
+        let mut columns = String::new();
+
+        for (column, value) in &iterable {
+            columns.push_str(&sql_injection_prevention(column.to_string()));
+            columns.push_str(" = '");
+            columns.push_str(&sql_injection_prevention(value.to_string()));
+            columns.push_str("' AND ");
+        }
+
+        if columns.len() <= 5 {
+            panic!("No columns and values provided");
+        }
+
+        self.query.push_str("WHERE ");
+        self.query.push_str(&columns[..columns.len() - 5]);
         self.query.push_str(" ");
         self
     }
