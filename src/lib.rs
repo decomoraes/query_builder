@@ -51,7 +51,7 @@ fn sql_injection_prevention(query: &str) -> String {
 }
 
 #[allow(non_snake_case)]
-pub trait QueryBuilder: Clone + Default + Sized {
+pub trait QueryBuilder: Clone + Default + Sized + Copy {
     fn new() -> Self;
     fn table(table: &str) -> Self;
     fn AND_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
@@ -84,7 +84,7 @@ pub trait QueryBuilder: Clone + Default + Sized {
     fn build(&self) -> io::Result<String>;
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Copy)]
 pub struct SqlQueryBuilder {
     query: String,
     table: String,
