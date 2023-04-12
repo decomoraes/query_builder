@@ -51,7 +51,7 @@ fn sql_injection_prevention(query: &str) -> String {
 }
 
 #[allow(non_snake_case)]
-pub trait QueryBuilder {
+pub trait QueryBuilder: Clone + Default + Sized {
     fn new() -> Self;
     fn table(table: &str) -> Self;
     fn AND_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
