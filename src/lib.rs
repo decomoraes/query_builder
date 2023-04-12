@@ -12,14 +12,42 @@ pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
 
-#[allow(dead_code)]
-fn sql_injection_prevention(query: String) -> String {
-    query
-        .replace("'", "''")
-        .replace(";", "")
-        .replace("--", "")
-        .replace("/*", "")
-        .replace("*/", "")
+fn sql_injection_prevention(query: &str) -> String {
+    let mut sanitized_query = String::new();
+    let mut in_comment = false;
+
+    for c in query.chars() {
+        if in_comment {
+            if c == '*' && query.trim_start().starts_with("*/") {
+                in_comment = false;
+            }
+            continue;
+        }
+        match c {
+            '\\' => sanitized_query.push_str("\\\\"),
+            '\'' => sanitized_query.push_str("\\'"),
+            '\"' => sanitized_query.push_str("\\\""),
+            '\n' => sanitized_query.push_str("\\n"),
+            '\r' => sanitized_query.push_str("\\r"),
+            '\t' => sanitized_query.push_str("\\t"),
+            '-' => {
+                if query.trim_start().starts_with("--") {
+                    break;
+                } else {
+                    sanitized_query.push(c);
+                }
+            }
+            '/' => {
+                if query.trim_start().starts_with("/*") {
+                    in_comment = true;
+                } else {
+                    sanitized_query.push(c);
+                }
+            }
+            _ => sanitized_query.push(c),
+        }
+    }
+    sanitized_query
 }
 
 #[allow(non_snake_case)]
@@ -33,6 +61,7 @@ pub trait QueryBuilder {
     fn INSERT<T>(&mut self, columns: &T) -> &mut Self
     where
         T: Serialize;
+    fn JOIN(&mut self, table: &str, column1: &str, operator: &str, column2: &str) -> &mut Self;
     fn LIMIT(&mut self, limit: u32) -> &mut Self;
     fn OFFSET(&mut self, limit: u32) -> &mut Self;
     fn OR_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
@@ -71,7 +100,7 @@ impl QueryBuilder for SqlQueryBuilder {
     }
 
     fn table(table: &str) -> Self {
-        let table = sql_injection_prevention(table.to_string());
+        let table = sql_injection_prevention(&table.to_string());
         Self {
             query: String::new(),
             table,
@@ -80,9 +109,9 @@ impl QueryBuilder for SqlQueryBuilder {
     }
 
     fn AND_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self {
-        let operand = sql_injection_prevention(operand.to_string());
-        let operator = sql_injection_prevention(operator.to_string());
-        let result = sql_injection_prevention(result.to_string());
+        let operand = sql_injection_prevention(&operand.to_string());
+        let operator = sql_injection_prevention(&operator.to_string());
+        let result = sql_injection_prevention(&result.to_string());
         let predicate = format!("{} {} '{}'", operand, operator, result);
         self.query.push_str("AND NOT ");
         self.query.push_str(&predicate);
@@ -91,9 +120,9 @@ impl QueryBuilder for SqlQueryBuilder {
     }
 
     fn AND(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self {
-        let operand = sql_injection_prevention(operand.to_string());
-        let operator = sql_injection_prevention(operator.to_string());
-        let result = sql_injection_prevention(result.to_string());
+        let operand = sql_injection_prevention(&operand.to_string());
+        let operator = sql_injection_prevention(&operator.to_string());
+        let result = sql_injection_prevention(&result.to_string());
         let predicate = format!("{} {} '{}'", operand, operator, result);
         self.query.push_str("AND ");
         self.query.push_str(&predicate);
@@ -102,7 +131,7 @@ impl QueryBuilder for SqlQueryBuilder {
     }
 
     fn FROM(&mut self, table: &str) -> &mut Self {
-        let table = sql_injection_prevention(table.to_string());
+        let table = sql_injection_prevention(&table.to_string());
         self.query.push_str("FROM ");
         self.query.push_str(&table);
         self.query.push_str(" ");
@@ -113,13 +142,13 @@ impl QueryBuilder for SqlQueryBuilder {
         let mut columns = String::new();
         let mut values = String::new();
         for (column, value) in columns_and_values {
-            columns.push_str(&sql_injection_prevention(column.to_string()));
+            columns.push_str(&sql_injection_prevention(&column.to_string()));
             columns.push_str(", ");
             values.push_str("'");
-            values.push_str(&sql_injection_prevention(value.to_string()));
+            values.push_str(&sql_injection_prevention(&value.to_string()));
             values.push_str("', ");
         }
-        // let table = sql_injection_prevention(table.to_string());
+        // let table = sql_injection_prevention(&table.to_string());
         self.query.push_str("INSERT INTO ");
         self.query.push_str(&self.table);
         self.query.push_str(" ");
@@ -143,10 +172,10 @@ impl QueryBuilder for SqlQueryBuilder {
         let mut values = String::new();
 
         for (column, value) in &iterable {
-            columns.push_str(&sql_injection_prevention(column.to_string()));
+            columns.push_str(&sql_injection_prevention(&column.to_string()));
             columns.push_str(", ");
             values.push_str("'");
-            values.push_str(&sql_injection_prevention(value.to_string()));
+            values.push_str(&sql_injection_prevention(&value.to_string()));
             values.push_str("', ");
         }
 
@@ -160,6 +189,16 @@ impl QueryBuilder for SqlQueryBuilder {
         self.query.push_str("(");
         self.query.push_str(&values[..values.len() - 2]);
         self.query.push_str(") ");
+        self
+    }
+
+    fn JOIN(&mut self, table: &str, column1: &str, operator: &str, column2: &str) -> &mut Self {
+        let table = sql_injection_prevention(table);
+        let column1 = sql_injection_prevention(column1);
+        let column2 = sql_injection_prevention(column2);
+        let join_clause = format!("JOIN {} ON {} {} {}", table, column1, operator, column2);
+        self.query.push_str(&join_clause);
+        self.query.push(' ');
         self
     }
 
@@ -178,9 +217,9 @@ impl QueryBuilder for SqlQueryBuilder {
     }
 
     fn OR_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self {
-        let operand = sql_injection_prevention(operand.to_string());
-        let operator = sql_injection_prevention(operator.to_string());
-        let result = sql_injection_prevention(result.to_string());
+        let operand = sql_injection_prevention(&operand.to_string());
+        let operator = sql_injection_prevention(&operator.to_string());
+        let result = sql_injection_prevention(&result.to_string());
         let predicate = format!("{} {} '{}'", operand, operator, result);
         self.query.push_str("OR NOT ");
         self.query.push_str(&predicate);
@@ -189,9 +228,9 @@ impl QueryBuilder for SqlQueryBuilder {
     }
 
     fn OR(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self {
-        let operand = sql_injection_prevention(operand.to_string());
-        let operator = sql_injection_prevention(operator.to_string());
-        let result = sql_injection_prevention(result.to_string());
+        let operand = sql_injection_prevention(&operand.to_string());
+        let operator = sql_injection_prevention(&operator.to_string());
+        let result = sql_injection_prevention(&result.to_string());
         let predicate = format!("{} {} '{}'", operand, operator, result);
         self.query.push_str("OR ");
         self.query.push_str(&predicate);
@@ -202,7 +241,7 @@ impl QueryBuilder for SqlQueryBuilder {
     fn ORDER_BY(&mut self, columns: &[&str]) -> &mut Self {
         let columns = columns
             .iter()
-            .map(|column| sql_injection_prevention(column.to_string()))
+            .map(|column| sql_injection_prevention(&column.to_string()))
             .collect::<Vec<String>>();
         self.query.push_str("ORDER BY ");
         self.query.push_str(&columns.join(", "));
@@ -213,7 +252,7 @@ impl QueryBuilder for SqlQueryBuilder {
     fn RETURNING(&mut self, columns: &[&str]) -> &mut Self {
         let columns = columns
             .iter()
-            .map(|column| sql_injection_prevention(column.to_string()))
+            .map(|column| sql_injection_prevention(&column.to_string()))
             .collect::<Vec<String>>();
         self.query.push_str("RETURNING ");
         self.query.push_str(&columns.join(", "));
@@ -224,7 +263,7 @@ impl QueryBuilder for SqlQueryBuilder {
     fn SELECT_DISTINCT(&mut self, columns: &[&str]) -> &mut Self {
         let columns = columns
             .iter()
-            .map(|column| sql_injection_prevention(column.to_string()))
+            .map(|column| sql_injection_prevention(&column.to_string()))
             .collect::<Vec<String>>();
         self.query.push_str("SELECT DISTINCT ");
         self.query.push_str(&columns.join(", "));
@@ -235,7 +274,7 @@ impl QueryBuilder for SqlQueryBuilder {
     fn SELECT(&mut self, columns: &[&str]) -> &mut Self {
         let columns = columns
             .iter()
-            .map(|column| sql_injection_prevention(column.to_string()))
+            .map(|column| sql_injection_prevention(&column.to_string()))
             .collect::<Vec<String>>();
         self.query.push_str("SELECT ");
         self.query.push_str(&columns.join(", "));
@@ -246,7 +285,7 @@ impl QueryBuilder for SqlQueryBuilder {
     fn SET(&mut self, columns: &[&str]) -> &mut Self {
         let columns = columns
             .iter()
-            .map(|column| sql_injection_prevention(column.to_string()))
+            .map(|column| sql_injection_prevention(&column.to_string()))
             .collect::<Vec<String>>();
         self.query.push_str("SET ");
         self.query.push_str(&columns.join(", "));
@@ -257,16 +296,16 @@ impl QueryBuilder for SqlQueryBuilder {
     fn UPDATE_AS_SLICE(&mut self, columns_and_values: &[(&str, &str)]) -> &mut Self {
         let mut sets = String::new();
         for (column, value) in columns_and_values {
-            sets.push_str(&sql_injection_prevention(column.to_string()));
+            sets.push_str(&sql_injection_prevention(&column.to_string()));
             sets.push_str(" = ");
             sets.push_str("'");
-            sets.push_str(&sql_injection_prevention(value.to_string()));
+            sets.push_str(&sql_injection_prevention(&value.to_string()));
             sets.push_str("', ");
         }
         if sets.len() <= 2 {
             panic!("No columns and values provided");
         }
-        // let table = sql_injection_prevention(table.to_string());
+        // let table = sql_injection_prevention(&table.to_string());
         self.query.push_str("UPDATE ");
         self.query.push_str(&self.table);
         self.query.push_str(" SET ");
@@ -290,16 +329,16 @@ impl QueryBuilder for SqlQueryBuilder {
 
         let mut sets = String::new();
         for (column, value) in values {
-            sets.push_str(&sql_injection_prevention(column.to_string()));
+            sets.push_str(&sql_injection_prevention(&column.to_string()));
             sets.push_str(" = ");
             sets.push_str("'");
-            sets.push_str(&sql_injection_prevention(value.to_string()));
+            sets.push_str(&sql_injection_prevention(&value.to_string()));
             sets.push_str("', ");
         }
         if sets.len() <= 2 {
             panic!("No columns and values provided");
         }
-        // let table = sql_injection_prevention(table.to_string());
+        // let table = sql_injection_prevention(&table.to_string());
         self.query.push_str("UPDATE ");
         self.query.push_str(&self.table);
         self.query.push_str(" SET ");
@@ -321,9 +360,9 @@ impl QueryBuilder for SqlQueryBuilder {
         let mut columns = String::new();
 
         for (column, value) in &iterable {
-            columns.push_str(&sql_injection_prevention(column.to_string()));
+            columns.push_str(&sql_injection_prevention(&column.to_string()));
             columns.push_str(" = '");
-            columns.push_str(&sql_injection_prevention(value.to_string()));
+            columns.push_str(&sql_injection_prevention(&value.to_string()));
             columns.push_str("' AND ");
         }
 
@@ -338,9 +377,9 @@ impl QueryBuilder for SqlQueryBuilder {
     }
 
     fn WHERE_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self {
-        let operand = sql_injection_prevention(operand.to_string());
-        let operator = sql_injection_prevention(operator.to_string());
-        let result = sql_injection_prevention(result.to_string());
+        let operand = sql_injection_prevention(&operand.to_string());
+        let operator = sql_injection_prevention(&operator.to_string());
+        let result = sql_injection_prevention(&result.to_string());
         let predicate = format!("{} {} '{}'", operand, operator, result);
         self.query.push_str("WHERE NOT ");
         self.query.push_str(&predicate);
@@ -349,9 +388,9 @@ impl QueryBuilder for SqlQueryBuilder {
     }
 
     fn WHERE(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self {
-        let operand = sql_injection_prevention(operand.to_string());
-        let operator = sql_injection_prevention(operator.to_string());
-        let result = sql_injection_prevention(result.to_string());
+        let operand = sql_injection_prevention(&operand.to_string());
+        let operator = sql_injection_prevention(&operator.to_string());
+        let result = sql_injection_prevention(&result.to_string());
         let predicate = format!("{} {} '{}'", operand, operator, result);
         self.query.push_str("WHERE ");
         self.query.push_str(&predicate);
@@ -485,7 +524,7 @@ mod tests {
 
         let user = User {
             name: Some("John".to_string()),
-            id: None,
+            id: Some("1".to_string())
         };
 
         let query = SqlQueryBuilder::new()
