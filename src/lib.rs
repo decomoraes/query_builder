@@ -84,6 +84,7 @@ pub trait QueryBuilder: Clone + Default + Sized {
     fn build(&self) -> io::Result<String>;
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct SqlQueryBuilder {
     query: String,
     table: String,
