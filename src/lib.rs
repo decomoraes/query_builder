@@ -4,13 +4,9 @@ use std::{
 };
 
 pub mod iterate_struct;
-use serde::Serialize;
+use struct_iterable::Iterable;
 
 use crate::iterate_struct::iterate_struct;
-
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
 
 fn sql_injection_prevention(query: &str) -> String {
     let mut sanitized_query = String::new();
@@ -52,32 +48,51 @@ fn sql_injection_prevention(query: &str) -> String {
 
 #[allow(non_snake_case)]
 pub trait QueryBuilder: Clone + Default + Sized {
+    /// Constructs a new `SqlQueryBuilder`.
     fn new() -> Self;
+    /// Constructs a new `SqlQueryBuilder` with a table.
     fn table(table: &str) -> Self;
+    /// Adds an AND NOT clause to the SQL query.
     fn AND_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
+    /// Adds an AND clause to the SQL query.
     fn AND(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
+    /// Adds a FROM clause to the SQL query.
     fn FROM(&mut self, table: &str) -> &mut Self;
+    /// Inserts a slice of columns and values into the SQL query.
     fn INSERT_AS_SLICE(&mut self, columns_and_values: &[(&str, &str)]) -> &mut Self;
+    /// Inserts an iterable of columns into the SQL query.
     fn INSERT<T>(&mut self, columns: &T) -> &mut Self
     where
-        T: Serialize;
+        T: Iterable;
+    /// Adds a JOIN clause to the SQL query.
     fn JOIN(&mut self, table: &str, column1: &str, operator: &str, column2: &str) -> &mut Self;
+    /// Adds a LIMIT clause to the SQL query.
     fn LIMIT(&mut self, limit: u32) -> &mut Self;
+    /// Adds an OFFSET clause to the SQL query.
     fn OFFSET(&mut self, limit: u32) -> &mut Self;
+    /// Adds an OR NOT clause to the SQL query.
     fn OR_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
+    /// Adds an OR clause to the SQL query.
     fn OR(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
+    /// Adds an ORDER BY clause to the SQL query.
     fn ORDER_BY(&mut self, columns: &[&str]) -> &mut Self;
+    /// Adds a RETURNING clause to the SQL query.
     fn RETURNING(&mut self, columns: &[&str]) -> &mut Self;
+    /// Adds a SELECT DISTINCT clause to the SQL query.
     fn SELECT_DISTINCT(&mut self, columns: &[&str]) -> &mut Self;
+    /// Adds a SELECT clause to the SQL query.
     fn SELECT(&mut self, columns: &[&str]) -> &mut Self;
+    /// Adds a SET clause to the SQL query.
     fn SET(&mut self, columns: &[&str]) -> &mut Self;
+    /// Adds a UPDATE_AS_SLICE clause to the SQL query.
     fn UPDATE_AS_SLICE(&mut self, columns_and_values: &[(&str, &str)]) -> &mut Self;
+    /// Adds a UPDATE clause to the SQL query.
     fn UPDATE<T>(&mut self, columns: &T) -> &mut Self
     where
-        T: Serialize;
+        T: Iterable;
     fn WHERE_AND<T>(&mut self, columns: &T) -> &mut Self
     where
-        T: Serialize;
+        T: Iterable;
     fn WHERE_NOT(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
     fn WHERE(&mut self, operand: &str, operator: &str, result: &str) -> &mut Self;
     fn to_string(&self) -> io::Result<String>;
@@ -91,6 +106,8 @@ pub struct SqlQueryBuilder {
     error_message: Option<String>,
 }
 
+/// Represents a SQL Query Builder.
+#[allow(non_snake_case)]
 impl QueryBuilder for SqlQueryBuilder {
     fn new() -> Self {
         Self {
@@ -165,9 +182,9 @@ impl QueryBuilder for SqlQueryBuilder {
 
     fn INSERT<T>(&mut self, columns: &T) -> &mut Self
     where
-        T: Serialize,
+        T: Iterable,
     {
-        let iterable: HashMap<String, String> = iterate_struct(&columns);
+        let iterable: HashMap<String, String> = iterate_struct(columns);
 
         let mut columns = String::new();
         let mut values = String::new();
@@ -317,9 +334,9 @@ impl QueryBuilder for SqlQueryBuilder {
 
     fn UPDATE<T>(&mut self, columns: &T) -> &mut Self
     where
-        T: Serialize,
+        T: Iterable,
     {
-        let iterable: HashMap<String, String> = iterate_struct(&columns);
+        let iterable: HashMap<String, String> = iterate_struct(columns);
 
         let mut values: Vec<(&str, &str)> = Vec::new();
         for item in &iterable {
@@ -350,9 +367,9 @@ impl QueryBuilder for SqlQueryBuilder {
 
     fn WHERE_AND<T>(&mut self, columns: &T) -> &mut Self
     where
-        T: Serialize,
+        T: Iterable,
     {
-        let iterable: HashMap<String, String> = iterate_struct(&columns);
+        let iterable: HashMap<String, String> = iterate_struct(columns);
 
         if iterable.len() == 0 {
             return self;
@@ -442,7 +459,8 @@ mod tests {
 
     #[test]
     fn should_insert_and_return_from_struct() {
-        #[derive(Serialize)]
+
+        #[derive(Iterable)]
         struct User {
             id: Option<i32>,
             name: Option<String>,
@@ -495,7 +513,7 @@ mod tests {
 
     #[test]
     fn should_update_users_set_name_equal_john_where_id_equal_1() {
-        #[derive(Serialize)]
+        #[derive(Iterable)]
         struct User {
             name: Option<String>,
             id: Option<String>,
@@ -517,14 +535,14 @@ mod tests {
 
     #[test]
     fn should_use_multiple_where_and() {
-        #[derive(Serialize)]
+        #[derive(Iterable)]
         struct User {
-            name: Option<String>,
+            user_name: Option<String>,
             id: Option<String>,
         }
 
         let user = User {
-            name: Some("John".to_string()),
+            user_name: Some("John".to_string()),
             id: Some("1".to_string())
         };
 
@@ -534,16 +552,6 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(query, "SELECT * WHERE name = 'John';");
+        assert_eq!(query, "SELECT * WHERE user_name = 'John' AND id = '1';");
     }
 }
-
-// ---- tests::should_update_users_set_name_equal_john_where_id_equal_1 stdout ----
-// thread 'tests::should_update_users_set_name_equal_john_where_id_equal_1' panicked at 'called `Result::unwrap()` on an `Err` value: Error("invalid type: string \"Sequence [ Sequence [ \\\"name\\\", \\\"John\\\", ], ]\", expected a map")', src/iterate_struct.rs:11:41
-// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-
-// ---- tests::should_update_users_set_name_equal_john_where_id_equal_1 stdout ----
-// thread 'tests::should_update_users_set_name_equal_john_where_id_equal_1' panicked at 'assertion failed: `(left == right)`
-//   left: `"UPDATE users SET name = 'John', id = '1' WHERE id = '1';"`,
-//  right: `"UPDATE users SET name = 'John' WHERE id = '1';"`',
-//           UPDATE users SET name = 'John' WHERE id = '1';");
